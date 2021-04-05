@@ -7,8 +7,9 @@
 - Naive K-Means Image Clustering
 - Flip/Rotate Image Augmentation
 - File Labeling / Live Video Tracking
+- Write keypoints to output
 
 # TODO:
-- Write keypoints to file output
-- Enable Multiple Keypoint Tracking
 - Keypoint Detection Mask
+- Enable Multiple Keypoint Tracking
+
