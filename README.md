@@ -12,4 +12,5 @@
 # TODO:
 - Keypoint Detection Mask
 - Enable Multiple Keypoint Tracking
+- Try different architectures based on CNN, RNN and combination of both.
 
