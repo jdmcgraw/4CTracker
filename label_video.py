@@ -4,7 +4,8 @@ import cv2
 import pickle
 import pyrealsense2 as rs
 import os.path
-from kmeans_clustering import KmeansClassifier
+from matplotlib import pyplot as plt
+#from kmeans_clustering import KmeansClassifier
 
 
 def clamp(value, min_value, max_value):
@@ -12,16 +13,17 @@ def clamp(value, min_value, max_value):
 
 
 class LabelingTool:
-
-    def __init__(self, overwrite=False, frames_to_label=100, time_length=0, perform_sampling=True):
-        self.project = "mouse"
+    
+    def __init__(self, overwrite=False, time_length=0, perform_sampling=True, frames_to_label=100):
+        self.project = "marker"
+        self.distance_mult = 8
         self.video_path = f"{self.project}.rgbd"
         self.label_path = f"{self.project}.labels"
         self.current_frame_index = 0
         self.current_key_index = 0
         self.current_frame = None
         self.current_display = None
-        self.playback_speed = 0.1
+        self.playback_speed = 0.2
         self.key_colors = [(0, 0, 255),
                            (0, 106, 255),
                            (0, 216, 255),
@@ -34,7 +36,7 @@ class LabelingTool:
 
         self.frames = []
         self.model_frames = []
-        self.key_points = ['head', 'body', 'tail']
+        self.key_points = ['head', 'tail']
         self.perform_sampling = perform_sampling
 
         self.playback = False
@@ -43,8 +45,11 @@ class LabelingTool:
         cv2.namedWindow('Tool')
         cv2.setMouseCallback('Tool', self.on_mouse)
 
-        if os.path.exists(self.video_path):
+        if os.path.isfile(self.video_path):
+            print(f"[INFO] Loading {self.video_path}")
             self.read_frames()
+        else:
+            raise FileNotFoundError(f"{self.video_path} not found. (Was it spelled correctly?)")
 
         if self.perform_sampling:
             clustered_frames = KmeansClassifier(self.frames, clusters=frames_to_label)
@@ -72,6 +77,7 @@ class LabelingTool:
 
         while True:
             key = cv2.waitKey(0)
+            print(key)
             if key == 8:  # Backspace
                 self.frame_labels[self.current_frame_index][self.current_key_index] = np.array([-1, -1])
                 self.deliver_preview_frame(self.current_frame_index)
@@ -92,6 +98,14 @@ class LabelingTool:
                 self.current_key_index -= 1
                 self.current_key_index = clamp(self.current_key_index, 0, len(self.key_points)-1)
                 self.deliver_preview_frame(self.current_frame_index)
+            if key == ord('b'):
+                self.blur_current_frame()
+            if key == 45 and not self.color_view:
+                self.distance_mult = max(self.distance_mult - 1, 1)
+                self.deliver_preview_frame(self.current_frame_index)
+            if key == 61 and not self.color_view:
+                self.distance_mult = min(self.distance_mult + 1, 10)
+                self.deliver_preview_frame(self.current_frame_index)
             if key == ord('q'):
                 self.playback = False
                 print("[QUIT] Closing")
@@ -105,6 +119,12 @@ class LabelingTool:
         if self.playback:
             t = Timer(self.playback_speed, self.play)
             t.start()
+
+    def blur_current_frame(self):
+        frame = self.frames[self.current_frame_index, :, :, :].copy()
+        blur = cv2.GaussianBlur(frame, (5, 5), 0)
+        self.frames[self.current_frame_index] = blur
+        self.deliver_preview_frame()
 
     def get_color_frame(self, frame):
         return self.frames[frame, :, :, :-1].copy()
@@ -128,14 +148,18 @@ class LabelingTool:
         print("[INFO] Reading Frames...")
         with open(self.video_path, 'rb') as in_file:
             self.frames = np.array(pickle.load(in_file), dtype=np.uint8)
+            # Remove any black frames where the RealSense camera is initializing
+            self.frames = np.array([i for k, i in enumerate(self.frames) if np.mean(i[:2]) > 0])
         print(f"[INFO] RGBD Video: {len(self.frames)} Frames")
 
     def deliver_preview_frame(self, frame=0):
         if self.color_view:
             self.current_display = cv2.resize(self.get_color_frame(frame), (self.display_size, self.display_size))
         else:
-            self.current_display = cv2.resize(self.get_depth_frame(frame), (self.display_size, self.display_size))
-            self.current_display = 1 - cv2.cvtColor(self.current_display, cv2.COLOR_GRAY2RGB)
+            depth_frame = self.get_depth_frame(frame) * self.distance_mult
+            colored_depth = cv2.applyColorMap(depth_frame, cv2.COLORMAP_JET)
+            self.current_display = cv2.resize(colored_depth, (self.display_size, self.display_size))
+            #self.current_display = 1 - cv2.cvtColor(self.current_display, cv2.COLOR_GRAY2RGB)
 
         text_pos = (int(0.03 * self.display_size), int(0.05 * self.display_size))
         color = (255, 255, 255) if self.current_frame_index < len(self.frames)-1 else (0, 0, 255)
@@ -193,7 +217,7 @@ class LabelingTool:
             self.deliver_preview_frame(self.current_frame_index)
             self.save_labels()
 
-            if self.current_frame_index == len(self.frame_labels)-1 and self.current_key_index < len(self.key_points)-1:
+            if self.current_frame_index == len(self.frame_labels) and self.current_key_index < len(self.key_points)-1:
                 self.current_frame_index = 0
                 self.current_key_index += 1
                 self.current_key_index = clamp(self.current_key_index, 0, len(self.key_points) - 1)
@@ -206,4 +230,4 @@ class LabelingTool:
             self.deliver_preview_frame(self.current_frame_index)
 
 
-tool = LabelingTool(overwrite=True, perform_sampling=True)
+tool = LabelingTool(overwrite=False, perform_sampling=False)
