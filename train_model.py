@@ -8,18 +8,34 @@ import matplotlib.pyplot as plt
 import cv2
 from augment_image import *
 
-project = "test2"
+
+project = "marker"
 print(f"CUDA available: {torch.cuda.is_available()}")
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 with open(f'{project}.labels', 'rb') as labels_in:
     labels = pickle.load(labels_in)
-    num_keypoints = labels_dict.shape[1]
-    print(labels)
+    #num_keypoints = labels_dict.shape[1]
+    num_keypoints = labels.shape[1]
+    
+    labels.shape
+    # Create dictionary temporarily; implement this in annotation script
+    labels_dict = {'head': labels[:,0,:], 'body': labels[:,1,:]}
+#    labels_dict = {'head': labels[:,0,:], 'body': labels[:,1,:], 'tail': labels[:,2,:]}
+    
+    print(labels.shape)
 
 with open(f'{project}.rgbd', 'rb') as frames_in:
     frames = pickle.load(frames_in)
-    frames = [frames[k] for k in range(len(frames)) if k in labels.keys()]
+    
+    # Depth frame normalization and clipping for converting into uint8; implement user input functionality
+    clip_dist = 2000
+    np.clip(frames[:,:,:,3], 0, clip_dist, frames[:,:,:,3])
+    frames[:,:,:,3] = (((frames[:,:,:,3]/clip_dist))*255).astype(np.uint8)
+    frames = np.uint8(frames)
+    
+    #frames = [frames[k] for k in range(len(frames)) if k in labels_dict.keys()]
+    
     print(len(frames))
 
 frames = np.array(frames)
@@ -64,7 +80,7 @@ class DepthNet(nn.Module):
         out = self.fc3(out)
         return out
 
-
+model_name = 'cnn'
 model = DepthNet()
 model.to(device)
 
@@ -88,12 +104,19 @@ for epoch in range(num_epochs):
     for i in range(batch_size):
         print("|", end='')
         frame_batch_i = torch.from_numpy(frame_batch).type(torch.float).reshape(-1, 4, frame_size, frame_size)
-        label_batch_i = torch.from_numpy(label_batch).type(torch.float).reshape(-1, 2)
+#        label_batch_i = torch.from_numpy(label_batch).type(torch.float).reshape(-1, 2)
+        
+        # Reshape to have a format of "num_keypoints * 2" values per image as per predictions
+        label_batch_i = torch.from_numpy(label_batch).type(torch.float).reshape(-1, num_keypoints * 2)
 
         inputs_i, labels_i = frame_batch_i.to(device), label_batch_i.to(device)
         optimizer.zero_grad()
 
         output = model(inputs_i)
+        
+#        print(frames.shape, labels.shape, frame_batch.shape, label_batch.shape, frame_batch_i.shape, label_batch_i.shape, output.shape, labels_i.shape)
+        
+        
         loss = loss_function(output, labels_i)
         loss.backward()
         optimizer.step()
@@ -102,12 +125,18 @@ for epoch in range(num_epochs):
         if i % batch_size == batch_size - 1:
             print("")
             if running_loss < min(loss_history):
-                torch.save(model.state_dict(), f'{project}.net')
+                torch.save(model.state_dict(), f'{project}_{model_name}.net')
             loss_history.append(running_loss)
 
 
 print('[INFO] Finished Training')
-torch.save(model.state_dict(), f'{project}.net')
+torch.save(model.state_dict(), f'{project}_{model_name}.net')
+
+with open(f'{project}_{model_name}.loss_hist', 'wb') as f:
+    np.save(f, loss_history)
+
+
 plt.loglog(loss_history)
 plt.title("Log-Log Loss History (Epoch vs. Loss)")
 plt.show()
+
