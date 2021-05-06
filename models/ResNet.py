@@ -91,11 +91,12 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, bottleneck=True, baseWidth=64, head7x7=True, layers=(3, 4, 23, 3), num_classes=1000):
+    def __init__(self, bottleneck=True, baseWidth=64, head7x7=True, layers=(3, 4, 23, 3), num_classes=1000, num_channel_input = 4):
         """ Constructor
         Args:
             layers: config of layers, e.g., (3, 4, 23, 3)
             num_classes: number of classes
+            num_channel_input: Number of input image channels (RGB: 3, RGBD: 4)
         """
         super(ResNet, self).__init__()
         if bottleneck:
@@ -107,10 +108,10 @@ class ResNet(nn.Module):
 
         self.head7x7 = head7x7
         if self.head7x7:
-            self.conv1 = nn.Conv2d(4, baseWidth, 7, 2, 3, bias=False)
+            self.conv1 = nn.Conv2d(num_channel_input, baseWidth, 7, 2, 3, bias=False)
             self.bn1 = nn.BatchNorm2d(baseWidth)
         else:
-            self.conv1 = nn.Conv2d(4, baseWidth // 2, 3, 2, 1, bias=False)
+            self.conv1 = nn.Conv2d(num_channel_input, baseWidth // 2, 3, 2, 1, bias=False)
             self.bn1 = nn.BatchNorm2d(baseWidth // 2)
             self.conv2 = nn.Conv2d(baseWidth // 2, baseWidth // 2, 3, 1, 1, bias=False)
             self.bn2 = nn.BatchNorm2d(baseWidth // 2)
